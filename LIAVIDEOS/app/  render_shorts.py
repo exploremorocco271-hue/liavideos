@@ -14,7 +14,7 @@ from typing import Dict, Any, List
 
 import pandas as pd
 
-from utils import setup_logging, ensure_dir, save_json, load_json, ffprobe_duration
+from utils import setup_logging, ensure_dir, save_json, load_json, ffprobe_duration, download_from_url, _is_http_url
 from transcribe import transcribe
 from features import load_audio_rms, export_rms_csv, score_candidates, build_sentence_list
 from ranker import finalize
@@ -22,18 +22,35 @@ from renderer import render_short
 from titles import pick_title_and_description
 
 def parse_args():
-    ap = argparse.ArgumentParser(description="Auto-generate vertical shorts from a long video.")
-    ap.add_argument("--input", required=True, help="Input video path")
-    ap.add_argument("--language", default=None, help="Override language (e.g., en)")
-    ap.add_argument("--max_shorts", type=int, default=6)
-    ap.add_argument("--max_duration", type=float, default=60.0)
-    ap.add_argument("--min_gap", type=float, default=30.0)
-    ap.add_argument("--outdir", default="./outputs")
-    ap.add_argument("--force_cpu", action="store_true")
-    return ap.parse_args()
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--input", help="Local file path OR http(s) URL", required=False)
+    p.add_argument("--url", help="http(s) URL (YouTube, etc.)", required=False)
+    p.add_argument("--cookies_path", help="Optional cookies.txt path for age/region-locked videos", default=None)
+    p.add_argument("--language", default="en")
+    p.add_argument("--max_shorts", type=int, default=6)
+    p.add_argument("--max_duration", type=int, default=60)
+    p.add_argument("--min_gap", type=int, default=30)
+    p.add_argument("--outdir", default="./outputs")
+    p.add_argument("--force_cpu", action="store_true")
+    return p.parse_args()
+
+def resolve_input_path(args):
+    src = args.url or args.input
+    if not src:
+        raise SystemExit("Provide --url or --input")
+    if _is_http_url(src):
+        # download into the persistent volume so we don't re-download next time
+        dl_dir = "/workspace/downloads" if os.path.isdir("/workspace") else "./downloads"
+        return download_from_url(src, outdir=dl_dir, cookies_path=args.cookies_path)
+    # local path
+    if not os.path.exists(src):
+        raise SystemExit(f"Input not found: {src}")
+    return os.path.abspath(src)
 
 def main():
     args = parse_args()
+    source_path = resolve_input_path(args)
     setup_logging()
     logger = logging.getLogger("render_shorts")
 
