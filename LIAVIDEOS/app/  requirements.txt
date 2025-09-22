@@ -1,3 +1,5 @@
+yt-dlp
+tenacity
 torch>=2.2.0
 whisperx>=3.1.1
 openai-whisper>=20231117
